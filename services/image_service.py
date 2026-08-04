@@ -110,7 +110,7 @@ class ImageService:
                     "width": width,
                     "height": height,
                 },
-                timeout=Config.REQUEST_TIMEOUT * 2,
+                timeout=Config.REQUEST_TIMEOUT * 6,
             )
         except requests.Timeout:
             raise ImageSafetyError("Image generation timed out. Please try again.", "provider")
@@ -166,7 +166,7 @@ class ImageService:
                     "height": 1024,
                     "steps": 4,
                 },
-                timeout=Config.REQUEST_TIMEOUT * 3,
+                timeout=Config.REQUEST_TIMEOUT * 6,
             )
         except requests.Timeout:
             raise ImageSafetyError("Image editing timed out. Please try again.", "provider")
