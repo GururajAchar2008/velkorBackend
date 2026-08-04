@@ -10,7 +10,7 @@ from flask import Blueprint, request, jsonify
 from werkzeug.utils import secure_filename
 
 from config import Config
-from files.extractor import extract_text
+from files.extractor import extract_file
 from utils.logger import get_logger
 
 logger = get_logger(__name__)
