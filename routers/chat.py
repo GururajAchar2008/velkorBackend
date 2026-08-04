@@ -34,53 +34,17 @@ def chat():
         system_prompt = None
         research_mode = False
 
-        if request.is_json:
-            data = request.get_json(silent=True) or {}
-            messages = data.get("messages", [])
-            system_prompt = data.get("system_prompt")
-            research_mode = bool(data.get("research_mode", False))
+        # Parse JSON body (don't rely on request.is_json which can be flaky)
+        data = request.get_json(silent=True) or {}
+        messages = data.get("messages", [])
+        system_prompt = data.get("system_prompt")
+        research_mode = bool(data.get("research_mode", False))
 
-            # Accept an optional base64 attachment in JSON payloads too.
-            file_payload = data.get("file")
-            if file_payload and isinstance(file_payload, dict):
-                file_context = file_payload.get("text", "")
-                file_meta = file_payload.get("metadata", {}) or {}
-        else:
-            messages_raw = request.form.get("messages")
-            if messages_raw:
-                try:
-                    messages = json.loads(messages_raw)
-                except Exception:
-                    messages = []
-
-            system_prompt = request.form.get("system_prompt")
-            research_mode = request.form.get("research_mode", "").lower() in ("1", "true", "yes", "on")
-
-            file = request.files.get("file")
-            if file and file.filename:
-                filename = secure_filename(file.filename)
-                file_path = os.path.join(Config.UPLOAD_FOLDER, filename)
-                file.save(file_path)
-
-                parse_result = document_service.parse_file(file_path)
-
-                try:
-                    os.remove(file_path)
-                except Exception:
-                    pass
-
-                if parse_result.get("success"):
-                    file_context = parse_result.get("text", "")
-                    file_meta = {
-                        "name": filename,
-                        "type": parse_result.get("type", ""),
-                        **parse_result.get("metadata", {}),
-                    }
-                else:
-                    return jsonify({
-                        "success": False,
-                        "error": f"Could not read the uploaded file: {parse_result.get('error', 'unknown error')}"
-                    }), 400
+        # Accept an optional base64 attachment in JSON payloads too.
+        file_payload = data.get("file")
+        if file_payload and isinstance(file_payload, dict):
+            file_context = file_payload.get("text", "")
+            file_meta = file_payload.get("metadata", {}) or {}
 
         if not messages:
             return jsonify({"success": False, "error": "No messages provided."}), 400
