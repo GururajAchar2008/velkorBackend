@@ -30,6 +30,7 @@ class AIService:
         messages,
         file_context: str = "",
         system_prompt: str = None,
+        research_mode: bool = False,
     ):
         query = ""
         for m in reversed(messages):
@@ -38,19 +39,31 @@ class AIService:
                 break
 
         web_context = ""
-        if self.needs_search(query):
+        sources = []
+        should_search = research_mode or self.needs_search(query)
+        if should_search:
             result = search_service.search(query)
             if result.get("success"):
                 web_context = "\n\n".join(
                     f"{r.get('title', '')}\n{r.get('snippet', '')}\n{r.get('url', '')}"
                     for r in result.get("results", [])
                 )
+                sources = [
+                    {
+                        "title": r.get("title", ""),
+                        "url": r.get("url", ""),
+                        "snippet": r.get("snippet", ""),
+                    }
+                    for r in result.get("results", [])
+                    if r.get("url")
+                ]
 
         prompt = prompt_service.build(
             messages=messages,
             file_context=file_context,
             web_context=web_context,
             system_prompt=system_prompt,
+            research_mode=research_mode,
         )
 
         final_messages = [
@@ -76,6 +89,9 @@ class AIService:
             response.model,
             elapsed
         )
+
+        response.research_performed = bool(sources)
+        response.sources = sources
 
         return response
 

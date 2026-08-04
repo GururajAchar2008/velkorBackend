@@ -11,6 +11,7 @@ from flask_cors import CORS
 from config import Config
 from routers.chat import chat_bp
 from routers.health import health_bp
+from routers.image import image_bp
 from routers.models import models_bp
 from utils.logger import get_logger
 
@@ -28,6 +29,7 @@ def create_app():
     app.register_blueprint(chat_bp, url_prefix="/api")
     app.register_blueprint(health_bp)
     app.register_blueprint(models_bp, url_prefix="/api")
+    app.register_blueprint(image_bp, url_prefix="/api")
 
     @app.route("/", methods=["GET"])
     def index():

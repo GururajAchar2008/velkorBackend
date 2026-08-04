@@ -32,11 +32,13 @@ def chat():
         file_context = ""
         file_meta = {}
         system_prompt = None
+        research_mode = False
 
         if request.is_json:
             data = request.get_json(silent=True) or {}
             messages = data.get("messages", [])
             system_prompt = data.get("system_prompt")
+            research_mode = bool(data.get("research_mode", False))
 
             # Accept an optional base64 attachment in JSON payloads too.
             file_payload = data.get("file")
@@ -52,6 +54,7 @@ def chat():
                     messages = []
 
             system_prompt = request.form.get("system_prompt")
+            research_mode = request.form.get("research_mode", "").lower() in ("1", "true", "yes", "on")
 
             file = request.files.get("file")
             if file and file.filename:
@@ -86,6 +89,7 @@ def chat():
             messages=messages,
             file_context=file_context,
             system_prompt=system_prompt,
+            research_mode=research_mode,
         )
 
         if not response.success:
@@ -105,6 +109,8 @@ def chat():
             "response_time": response.response_time,
             "total_tokens": response.total_tokens,
             "file": file_meta or None,
+            "research_performed": response.research_performed,
+            "sources": response.sources or [],
         }), 200
 
     except Exception as e:

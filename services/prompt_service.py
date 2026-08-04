@@ -15,6 +15,12 @@ Use live search context for current events.
 If information is uncertain, clearly say so.
 """
 
+RESEARCH_INSTRUCTIONS="""You are in RESEARCH MODE. The user enabled live web research.
+Base your answer on the LIVE SEARCH CONTEXT below and treat it as the latest,
+most reliable information. Always cite your sources by listing the source titles
+and URLs at the end of your answer. If the search context does not contain the
+answer, say so clearly and give your best general answer instead of guessing."""
+
 class PromptService:
 
     def __init__(self):
@@ -34,14 +40,20 @@ class PromptService:
         file_context:str="",
         web_context:str="",
         system_prompt:str|None=None,
+        research_mode:bool=False,
     )->str:
 
         parts=[]
+        if research_mode:
+            parts.append(RESEARCH_INSTRUCTIONS)
         parts.append(system_prompt or DEFAULT_SYSTEM_PROMPT)
 
         if web_context:
             parts.append("=== LIVE SEARCH CONTEXT ===")
             parts.append(web_context[:self.max_chars])
+        elif research_mode:
+            parts.append("=== LIVE SEARCH CONTEXT ===")
+            parts.append("(No live search results could be retrieved. Answer from your own knowledge and clearly note that live results were unavailable.)")
 
         if file_context:
             parts.append("=== DOCUMENT CONTEXT ===")

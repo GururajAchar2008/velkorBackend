@@ -45,6 +45,10 @@ class AIResponse:
 
     retries: int = 0
 
+    research_performed: bool = False
+
+    sources: Optional[list] = None
+
     def to_dict(self):
         return {
             "success": self.success,
@@ -61,4 +65,6 @@ class AIResponse:
             "rag_used": self.rag_used,
             "cached": self.cached,
             "retries": self.retries,
+            "research_performed": self.research_performed,
+            "sources": self.sources or [],
         }

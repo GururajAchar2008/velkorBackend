@@ -45,6 +45,12 @@ class Config:
     UPLOAD_FOLDER = "storage/uploads"
     TEMP_FOLDER = "storage/temp"
 
+    # ---------- Image generation / editing (NVIDIA NIM) ----------
+    IMAGE_GEN_MODEL = os.getenv("IMAGE_GEN_MODEL", "flux.1-schnell")
+    IMAGE_EDIT_MODEL = os.getenv("IMAGE_EDIT_MODEL", "qwen-image-edit")
+    IMAGE_MAX_PROMPT_CHARS = 4000
+    MAX_IMAGE_UPLOAD_BYTES = 20 * 1024 * 1024
+
     # ---------- RAG ----------
     MAX_CONTEXT_CHARS = 12000
     CHUNK_SIZE = 1200

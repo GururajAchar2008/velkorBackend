@@ -33,5 +33,10 @@ def health():
             "openai": {
                 "configured": router.premium.health_check(),
             },
+            "image": {
+                "configured": bool(Config.NVIDIA_API_KEY),
+                "generation_model": Config.IMAGE_GEN_MODEL,
+                "edit_model": Config.IMAGE_EDIT_MODEL,
+            },
         },
     }), 200
