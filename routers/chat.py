@@ -39,21 +39,25 @@ def chat():
     Main chat endpoint handling text messages, optional file uploads,
     and routing through the primary/fallback AI pipeline.
     """
+    import json as json_lib
     try:
-        messages = []
-        file_context = ""
-        file_meta = {}
-        system_prompt = None
-        research_mode = False
+        raw = request.get_data(as_text=True)
+        if not raw:
+            return jsonify({"success": False, "error": "No request body provided."}), 400
 
-        # Parse JSON body (don't rely on request.is_json which can be flaky)
-        data = request.get_json(silent=True) or {}
+        data = {}
+        try:
+            data = json_lib.loads(raw)
+        except json_lib.JSONDecodeError as e:
+            return jsonify({"success": False, "error": f"Invalid JSON: {str(e)}"}), 400
+
         messages = data.get("messages", [])
         system_prompt = data.get("system_prompt")
         research_mode = bool(data.get("research_mode", False))
 
-        # Accept an optional base64 attachment in JSON payloads too.
         file_payload = data.get("file")
+        file_context = ""
+        file_meta = {}
         if file_payload and isinstance(file_payload, dict):
             file_context = file_payload.get("text", "")
             file_meta = file_payload.get("metadata", {}) or {}
