@@ -47,7 +47,7 @@ def create_app():
         return jsonify({
             "status": "online",
             "service": "Velkor AI / Guru JI AI Backend",
-            "version": "2.1"
+            "version": "2.2"
         }), 200
 
     return app
