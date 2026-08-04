@@ -13,12 +13,14 @@ from routers.chat import chat_bp
 from routers.health import health_bp
 from routers.image import image_bp
 from routers.models import models_bp
+from routers.upload import upload_bp
 from utils.logger import get_logger
 
 logger = get_logger(__name__)
 
 ALLOWED_ORIGINS = [
     "https://gururajachar2008.github.io",
+    "https://gururajachar2008.github.io/Velkor",
 ]
 
 
@@ -41,6 +43,7 @@ def create_app():
     app.register_blueprint(health_bp)
     app.register_blueprint(models_bp, url_prefix="/api")
     app.register_blueprint(image_bp, url_prefix="/api")
+    app.register_blueprint(upload_bp, url_prefix="/api")
 
     @app.route("/", methods=["GET"])
     def index():
