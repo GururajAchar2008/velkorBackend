@@ -1,0 +1,119 @@
+import os
+import time
+import requests
+from typing import List, Dict, Optional
+
+from .base import AIProvider
+from .response import AIResponse
+
+
+class OpenRouterProvider(AIProvider):
+    API_URL = "https://openrouter.ai/api/v1/chat/completions"
+
+    def __init__(self):
+        super().__init__(
+            api_key=os.getenv("OPENROUTER_API_KEY", ""),
+            model=os.getenv("OPENROUTER_MODEL", "deepseek/deepseek-chat-v3-0324"),
+        )
+
+    @property
+    def provider_name(self) -> str:
+        return "OpenRouter"
+
+    def health_check(self) -> bool:
+        return bool(self.api_key)
+
+    def generate(
+        self,
+        messages: List[Dict],
+        timeout: int = 60,
+        system_prompt: Optional[str] = None,
+    ) -> AIResponse:
+
+        if not self.api_key:
+            return AIResponse(
+                success=False,
+                reply="",
+                provider=self.provider_name,
+                model=self.model,
+                status_code=500,
+                error="OPENROUTER_API_KEY missing",
+            )
+
+        payload_messages = []
+
+        if system_prompt:
+            payload_messages.append(
+                {"role": "system", "content": system_prompt}
+            )
+
+        payload_messages.extend(messages)
+
+        headers = {
+            "Authorization": f"Bearer {self.api_key}",
+            "Content-Type": "application/json",
+        }
+
+        payload = {
+            "model": self.model,
+            "messages": payload_messages,
+        }
+
+        start = time.time()
+
+        try:
+            r = requests.post(
+                self.API_URL,
+                headers=headers,
+                json=payload,
+                timeout=timeout,
+            )
+
+            elapsed = time.time() - start
+
+            if r.status_code != 200:
+                return AIResponse(
+                    success=False,
+                    reply="",
+                    provider=self.provider_name,
+                    model=self.model,
+                    status_code=r.status_code,
+                    error=r.text,
+                    response_time=elapsed,
+                )
+
+            data = r.json()
+
+            usage = data.get("usage", {})
+
+            return AIResponse(
+                success=True,
+                reply=data["choices"][0]["message"]["content"],
+                provider=self.provider_name,
+                model=data.get("model", self.model),
+                response_time=elapsed,
+                prompt_tokens=usage.get("prompt_tokens", 0),
+                completion_tokens=usage.get("completion_tokens", 0),
+                total_tokens=usage.get("total_tokens", 0),
+                raw=data,
+            )
+
+        except requests.Timeout:
+            return AIResponse(
+                success=False,
+                reply="",
+                provider=self.provider_name,
+                model=self.model,
+                status_code=408,
+                error="Request timed out",
+            )
+
+        except Exception as e:
+            return AIResponse(
+                success=False,
+                reply="",
+                provider=self.provider_name,
+                model=self.model,
+                status_code=500,
+                error=str(e),
+            )
