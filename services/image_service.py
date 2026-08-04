@@ -23,7 +23,7 @@ from utils.logger import get_logger
 
 logger = get_logger(__name__)
 
-API_BASE = "https://integrate.api.nvidia.com/v1"
+API_BASE = "https://ai.api.nvidia.com/v1/genai"
 
 BLOCKED_CATEGORIES = {
     "explicit sexual content": [
@@ -80,27 +80,37 @@ class ImageService:
     def _sanitize_prompt(self, prompt: str) -> str:
         return (prompt or "").strip()[: Config.IMAGE_MAX_PROMPT_CHARS]
 
+    @staticmethod
+    def _parse_size(size: str) -> Tuple[int, int]:
+        """Parse 'WxH' (e.g. '1024x1024') into (width, height)."""
+        try:
+            width, height = str(size).lower().split("x")
+            return int(width), int(height)
+        except Exception:
+            return 1024, 1024
+
     def generate(self, prompt: str, size: str = "1024x1024") -> Dict[str, Any]:
         ok, reason = self.validate_prompt(prompt)
         if not ok:
             raise ImageSafetyError(reason, "policy")
         key = self._require_key()
 
+        width, height = self._parse_size(size)
         start = time.time()
         try:
             resp = requests.post(
-                f"{API_BASE}/images/generations",
+                f"{API_BASE}/black-forest-labs/{Config.IMAGE_GEN_MODEL}",
                 headers={
                     "Authorization": f"Bearer {key}",
+                    "Accept": "application/json",
                     "Content-Type": "application/json",
                 },
                 json={
-                    "model": Config.IMAGE_GEN_MODEL,
                     "prompt": self._sanitize_prompt(prompt),
-                    "response_format": "b64_json",
-                    "size": size,
+                    "width": width,
+                    "height": height,
                 },
-                timeout=Config.REQUEST_TIMEOUT,
+                timeout=Config.REQUEST_TIMEOUT * 2,
             )
         except requests.Timeout:
             raise ImageSafetyError("Image generation timed out. Please try again.", "provider")
@@ -137,18 +147,26 @@ class ImageService:
             raise ImageSafetyError(reason, "policy")
         key = self._require_key()
 
+        image_b64 = base64.b64encode(image_bytes).decode("ascii")
         start = time.time()
         try:
             resp = requests.post(
-                f"{API_BASE}/images/edits",
-                headers={"Authorization": f"Bearer {key}"},
-                files={"image": (image_filename, image_bytes)},
-                data={
-                    "model": Config.IMAGE_EDIT_MODEL,
-                    "prompt": self._sanitize_prompt(prompt),
-                    "response_format": "b64_json",
+                f"{API_BASE}/qwen/{Config.IMAGE_EDIT_MODEL}",
+                headers={
+                    "Authorization": f"Bearer {key}",
+                    "Accept": "application/json",
+                    "Content-Type": "application/json",
                 },
-                timeout=Config.REQUEST_TIMEOUT * 2,
+                json={
+                    "prompt": self._sanitize_prompt(prompt),
+                    "mode": "edit",
+                    "image": image_b64,
+                    "cfg_scale": 7.5,
+                    "width": 1024,
+                    "height": 1024,
+                    "steps": 4,
+                },
+                timeout=Config.REQUEST_TIMEOUT * 3,
             )
         except requests.Timeout:
             raise ImageSafetyError("Image editing timed out. Please try again.", "provider")
