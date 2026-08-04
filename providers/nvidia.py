@@ -5,6 +5,7 @@ from typing import List, Dict, Optional
 
 from .base import AIProvider
 from .response import AIResponse
+from config import Config
 
 
 class NvidiaProvider(AIProvider):
@@ -12,11 +13,8 @@ class NvidiaProvider(AIProvider):
 
     def __init__(self):
         super().__init__(
-            api_key=os.getenv("NVIDIA_API_KEY", ""),
-            model=os.getenv(
-                "NVIDIA_MODEL",
-                "nvidia/llama-3.3-nemotron-super-49b-v1",
-            ),
+            api_key=os.getenv("NVIDIA_API_KEY", Config.NVIDIA_API_KEY),
+            model=os.getenv("NVIDIA_MODEL", Config.NVIDIA_MODEL),
         )
 
     @property
@@ -56,8 +54,8 @@ class NvidiaProvider(AIProvider):
         payload = {
             "model": self.model,
             "messages": payload_messages,
-            "temperature": 0.7,
-            "max_tokens": 4096,
+            "temperature": Config.TEMPERATURE,
+            "max_tokens": Config.MAX_TOKENS,
             "stream": False,
         }
 

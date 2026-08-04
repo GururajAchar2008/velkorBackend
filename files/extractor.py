@@ -4,6 +4,7 @@ files/extractor.py
 Universal file extractor for Velkor AI.
 """
 
+import io
 import os
 
 from .parsers.pdf import extract_pdf
@@ -18,23 +19,93 @@ from .parsers.code import extract_code
 
 
 PDF = {".pdf"}
-DOCX = {".docx"}
-XLSX = {".xlsx", ".xlsm"}
-PPTX = {".pptx"}
+DOCX = {".docx", ".doc"}
+XLSX = {".xlsx", ".xlsm", ".xls"}
+PPTX = {".pptx", ".ppt"}
 IMAGE = {
     ".png", ".jpg", ".jpeg",
-    ".webp", ".bmp", ".gif", ".tiff"
+    ".webp", ".bmp", ".gif", ".tiff",
+    ".heic", ".heif",
 }
-ARCHIVE = {".zip"}
+ARCHIVE = {".zip", ".tar", ".gz", ".tgz"}
 
 CODE = {
     ".py",".js",".ts",".jsx",".tsx",
-    ".java",".c",".cpp",".cc",".cs",
+    ".java",".c",".cpp",".cc",".h",".hpp",".cs",
     ".go",".rs",".php",".rb",".swift",
     ".kt",".scala",".sql",".json",".xml",
-    ".yaml",".yml",".html",".css",".md",
-    ".txt",".sh",".bat"
+    ".yaml",".yml",".html",".htm",".css",".md",
+    ".txt",".sh",".bat",".csv",".tsv",
+    ".log",".ini",".toml",".cfg",".conf",
+    ".env",".tex",".rst",".rtf",".vtt",".srt",
 }
+
+TEXT_EXTENSIONS = CODE
+
+
+def _ext(filepath):
+    return os.path.splitext(filepath)[1].lower()
+
+
+def extract_file_path(filepath):
+    """
+    Extract content from a file on disk (path-based API).
+
+    Same standardized result as extract_file().
+    """
+    filename = os.path.basename(filepath)
+    ext = _ext(filename)
+
+    with open(filepath, "rb") as f:
+        data = f.read()
+
+    stream = io.BytesIO(data)
+    return dispatch(stream, filename, ext)
+
+
+def dispatch(stream, filename: str, ext: str):
+    """Route a stream to the right parser based on file extension."""
+
+    result = None
+
+    if ext in PDF:
+        result = extract_pdf(stream)
+
+    elif ext in DOCX:
+        result = extract_docx(stream)
+
+    elif ext in XLSX:
+        result = extract_xlsx(stream)
+
+    elif ext in PPTX:
+        result = extract_pptx(stream)
+
+    elif ext in IMAGE:
+        result = extract_image(stream)
+
+    elif ext in ARCHIVE:
+        result = extract_archive(stream)
+
+    elif ext in CODE:
+        result = extract_code(stream, filename)
+
+    if result is not None:
+        # Legacy binary formats (.doc, .xls, .ppt) often fail the modern
+        # parser. Fall back to raw UTF-8 text so the content still reaches
+        # the model instead of being dropped entirely.
+        if not result.get("success") and ext in {".doc", ".xls", ".ppt"}:
+            stream.seek(0)
+            fallback = extract_code(stream, filename)
+            if fallback.get("success"):
+                return fallback
+        return result
+
+    return {
+        "success": False,
+        "text": "",
+        "metadata": {},
+        "error": f"Unsupported file type: {ext}",
+    }
 
 
 def extract_file(file_storage):
@@ -44,36 +115,10 @@ def extract_file(file_storage):
 
     filename = file_storage.filename or "unknown"
 
-    ext = os.path.splitext(filename)[1].lower()
+    ext = _ext(filename)
 
     stream = file_storage.stream
 
     stream.seek(0)
 
-    if ext in PDF:
-        return extract_pdf(stream)
-
-    if ext in DOCX:
-        return extract_docx(stream)
-
-    if ext in XLSX:
-        return extract_xlsx(stream)
-
-    if ext in PPTX:
-        return extract_pptx(stream)
-
-    if ext in IMAGE:
-        return extract_image(stream)
-
-    if ext in ARCHIVE:
-        return extract_archive(stream)
-
-    if ext in CODE:
-        return extract_code(stream, filename)
-
-    return {
-        "success": False,
-        "text": "",
-        "metadata": {},
-        "error": f"Unsupported file type: {ext}",
-    }
+    return dispatch(stream, filename, ext)

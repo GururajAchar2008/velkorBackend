@@ -7,21 +7,27 @@ Registers blueprints and initializes the Flask application.
 
 from flask import Flask, jsonify
 from flask_cors import CORS
+
 from config import Config
-from routes.chat import chat_bp
+from routers.chat import chat_bp
+from routers.health import health_bp
+from routers.models import models_bp
 from utils.logger import get_logger
 
 logger = get_logger(__name__)
 
+
 def create_app():
     app = Flask(__name__)
     app.config.from_object(Config)
-    
+
     # Enable CORS for frontend integration
     CORS(app)
 
     # Register Blueprints
     app.register_blueprint(chat_bp, url_prefix="/api")
+    app.register_blueprint(health_bp)
+    app.register_blueprint(models_bp, url_prefix="/api")
 
     @app.route("/", methods=["GET"])
     def index():
@@ -33,7 +39,8 @@ def create_app():
 
     return app
 
+
 app = create_app()
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=5000, debug=True)
+    app.run(host=Config.HOST, port=Config.PORT, debug=Config.DEBUG)

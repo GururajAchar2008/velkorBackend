@@ -29,6 +29,14 @@ class Config:
         "NVIDIA_MODEL",
         "nvidia/llama-3.3-nemotron-super-49b-v1"
     )
+    # Free-tier NVIDIA NIM is capped (~40 RPM). Router auto-falls back to
+    # OpenRouter when the window is full or after a 429 cooldown.
+    NVIDIA_RPM_LIMIT = int(os.getenv("NVIDIA_RPM_LIMIT", "40"))
+    NVIDIA_COOLDOWN_SECONDS = int(os.getenv("NVIDIA_COOLDOWN_SECONDS", "60"))
+
+    OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
+    OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
+    OPENAI_BASE_URL = os.getenv("OPENAI_BASE_URL", "https://api.openai.com/v1")
 
     SERPER_API_KEY = os.getenv("SERPER_API_KEY", "")
 
@@ -55,15 +63,18 @@ class Config:
 
     @classmethod
     def validate(cls):
+        """Check that at least one AI provider is configured."""
         missing = []
 
-        if not cls.OPENROUTER_API_KEY:
-            missing.append("OPENROUTER_API_KEY")
-
-        if not cls.NVIDIA_API_KEY:
-            missing.append("NVIDIA_API_KEY")
+        if not cls.NVIDIA_API_KEY and not cls.OPENROUTER_API_KEY and not cls.OPENAI_API_KEY:
+            missing.extend(["NVIDIA_API_KEY", "OPENROUTER_API_KEY"])
 
         return {
             "valid": len(missing) == 0,
-            "missing": missing
+            "missing": missing,
+            "providers": {
+                "nvidia": bool(cls.NVIDIA_API_KEY),
+                "openrouter": bool(cls.OPENROUTER_API_KEY),
+                "openai": bool(cls.OPENAI_API_KEY),
+            },
         }

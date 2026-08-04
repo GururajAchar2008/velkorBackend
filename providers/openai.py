@@ -1,3 +1,12 @@
+"""
+providers/openai.py
+
+OpenAI premium provider for Velkor AI.
+
+Used only as a last-resort premium tier by the router.
+No requests are made unless OPENAI_API_KEY is configured.
+"""
+
 import os
 import time
 import requests
@@ -8,18 +17,21 @@ from .response import AIResponse
 from config import Config
 
 
-class OpenRouterProvider(AIProvider):
-    API_URL = "https://openrouter.ai/api/v1/chat/completions"
+class OpenAIProvider(AIProvider):
 
     def __init__(self):
         super().__init__(
-            api_key=os.getenv("OPENROUTER_API_KEY", Config.OPENROUTER_API_KEY),
-            model=os.getenv("OPENROUTER_MODEL", Config.OPENROUTER_MODEL),
+            api_key=os.getenv("OPENAI_API_KEY", Config.OPENAI_API_KEY),
+            model=os.getenv("OPENAI_MODEL", Config.OPENAI_MODEL),
         )
+        self.base_url = os.getenv(
+            "OPENAI_BASE_URL",
+            Config.OPENAI_BASE_URL,
+        ).rstrip("/")
 
     @property
     def provider_name(self) -> str:
-        return "OpenRouter"
+        return "OpenAI"
 
     def health_check(self) -> bool:
         return bool(self.api_key)
@@ -38,16 +50,12 @@ class OpenRouterProvider(AIProvider):
                 provider=self.provider_name,
                 model=self.model,
                 status_code=500,
-                error="OPENROUTER_API_KEY missing",
+                error="OPENAI_API_KEY missing",
             )
 
         payload_messages = []
-
         if system_prompt:
-            payload_messages.append(
-                {"role": "system", "content": system_prompt}
-            )
-
+            payload_messages.append({"role": "system", "content": system_prompt})
         payload_messages.extend(messages)
 
         headers = {
@@ -58,33 +66,32 @@ class OpenRouterProvider(AIProvider):
         payload = {
             "model": self.model,
             "messages": payload_messages,
+            "temperature": Config.TEMPERATURE,
+            "max_tokens": Config.MAX_TOKENS,
         }
 
         start = time.time()
-
         try:
-            r = requests.post(
-                self.API_URL,
+            resp = requests.post(
+                f"{self.base_url}/chat/completions",
                 headers=headers,
                 json=payload,
                 timeout=timeout,
             )
-
             elapsed = time.time() - start
 
-            if r.status_code != 200:
+            if resp.status_code != 200:
                 return AIResponse(
                     success=False,
                     reply="",
                     provider=self.provider_name,
                     model=self.model,
-                    status_code=r.status_code,
-                    error=r.text,
+                    status_code=resp.status_code,
+                    error=resp.text,
                     response_time=elapsed,
                 )
 
-            data = r.json()
-
+            data = resp.json()
             usage = data.get("usage", {})
 
             return AIResponse(
@@ -108,7 +115,6 @@ class OpenRouterProvider(AIProvider):
                 status_code=408,
                 error="Request timed out",
             )
-
         except Exception as e:
             return AIResponse(
                 success=False,
