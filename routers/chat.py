@@ -41,20 +41,23 @@ def chat():
     """
     import json as json_lib
     try:
-        raw = request.get_data(as_text=True)
-        if not raw:
+        # Get raw request data first
+        raw_data = request.get_data(as_text=True)
+        if not raw_data:
             return jsonify({"success": False, "error": "No request body provided."}), 400
 
-        data = {}
+        # Parse JSON with error handling
         try:
-            data = json_lib.loads(raw)
+            data = json_lib.loads(raw_data)
         except json_lib.JSONDecodeError as e:
             return jsonify({"success": False, "error": f"Invalid JSON: {str(e)}"}), 400
 
+        # Extract fields from JSON data
         messages = data.get("messages", [])
         system_prompt = data.get("system_prompt")
         research_mode = bool(data.get("research_mode", False))
 
+        # Handle file payload
         file_payload = data.get("file")
         file_context = ""
         file_meta = {}
@@ -62,9 +65,11 @@ def chat():
             file_context = file_payload.get("text", "")
             file_meta = file_payload.get("metadata", {}) or {}
 
+        # Validate messages
         if not messages:
             return jsonify({"success": False, "error": "No messages provided."}), 400
 
+        # Call AI service
         response = ai_service.chat(
             messages=messages,
             file_context=file_context,
@@ -72,6 +77,7 @@ def chat():
             research_mode=research_mode,
         )
 
+        # Handle AI service errors
         if not response.success:
             return jsonify({
                 "success": False,
@@ -80,6 +86,7 @@ def chat():
                 "model": response.model,
             }), 502
 
+        # Return successful response
         return jsonify({
             "success": True,
             "reply": response.reply,
