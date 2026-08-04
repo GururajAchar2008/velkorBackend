@@ -109,6 +109,8 @@ class ImageService:
                     "prompt": self._sanitize_prompt(prompt),
                     "width": width,
                     "height": height,
+                    "steps": 4,
+                    "seed": 0,
                 },
                 timeout=Config.REQUEST_TIMEOUT * 6,
             )
