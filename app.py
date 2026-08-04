@@ -17,13 +17,24 @@ from utils.logger import get_logger
 
 logger = get_logger(__name__)
 
+ALLOWED_ORIGINS = [
+    "https://gururajachar2008.github.io",
+]
+
 
 def create_app():
     app = Flask(__name__)
     app.config.from_object(Config)
 
-    # Enable CORS for frontend integration
-    CORS(app)
+    # Enable CORS for the frontend. Only the deployed GitHub Pages origin
+    # is allowed to call the API.
+    CORS(
+        app,
+        origins=ALLOWED_ORIGINS,
+        methods=["GET", "POST", "OPTIONS"],
+        allow_headers=["Content-Type", "Authorization"],
+        supports_credentials=False,
+    )
 
     # Register Blueprints
     app.register_blueprint(chat_bp, url_prefix="/api")
