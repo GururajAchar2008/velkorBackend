@@ -21,6 +21,13 @@ chat_bp = Blueprint("chat", __name__)
 os.makedirs(Config.UPLOAD_FOLDER, exist_ok=True)
 
 
+@chat_bp.route("/chat/test", methods=["POST"])
+def chat_test():
+    """Debug endpoint to test JSON parsing."""
+    data = request.get_json(silent=True) or {}
+    return jsonify({"received": data, "is_json": request.is_json}), 200
+
+
 @chat_bp.route("/chat", methods=["POST"])
 def chat():
     """
