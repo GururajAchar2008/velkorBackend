@@ -24,8 +24,13 @@ os.makedirs(Config.UPLOAD_FOLDER, exist_ok=True)
 @chat_bp.route("/chat/test", methods=["POST"])
 def chat_test():
     """Debug endpoint to test JSON parsing."""
-    data = request.get_json(silent=True) or {}
-    return jsonify({"received": data, "is_json": request.is_json}), 200
+    import json as json_lib
+    raw = request.get_data(as_text=True)
+    try:
+        data = json_lib.loads(raw) if raw else {}
+    except Exception as e:
+        data = {"parse_error": str(e), "raw": raw}
+    return jsonify({"received": data, "is_json": request.is_json, "content_type": request.content_type, "raw_len": len(raw)}), 200
 
 
 @chat_bp.route("/chat", methods=["POST"])
