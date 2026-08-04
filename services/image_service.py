@@ -12,6 +12,7 @@ operators remain responsible for meeting the laws of their jurisdiction.
 """
 
 import base64
+import json
 import time
 from typing import Dict, Any, Tuple
 
@@ -110,8 +111,9 @@ class ImageService:
         elapsed = time.time() - start
         if resp.status_code != 200:
             logger.error("NVIDIA image generation failed: %s %s", resp.status_code, resp.text)
+            detail = self._provider_error(resp.text)
             raise ImageSafetyError(
-                "The image provider returned an error. Please try again.",
+                f"The image provider returned an error. {detail}".strip(),
                 "provider",
             )
 
@@ -157,8 +159,9 @@ class ImageService:
         elapsed = time.time() - start
         if resp.status_code != 200:
             logger.error("NVIDIA image edit failed: %s %s", resp.status_code, resp.text)
+            detail = self._provider_error(resp.text)
             raise ImageSafetyError(
-                "The image provider returned an error. Please try again.",
+                f"The image provider returned an error. {detail}".strip(),
                 "provider",
             )
 
@@ -175,6 +178,23 @@ class ImageService:
             "provider": "NVIDIA NIM",
             "response_time": elapsed,
         }
+
+    @staticmethod
+    def _provider_error(text: str) -> str:
+        """Extract a short, safe error description from a provider response."""
+        if not text:
+            return ""
+        try:
+            payload = json.loads(text)
+            for key in ("error", "message", "detail"):
+                value = payload.get(key)
+                if isinstance(value, dict):
+                    value = value.get("message") or value.get("detail")
+                if isinstance(value, str) and value.strip():
+                    return value.strip()[:500]
+        except Exception:
+            pass
+        return text[:200].strip()
 
     @staticmethod
     def _extract_b64(payload: Dict[str, Any]) -> str:
