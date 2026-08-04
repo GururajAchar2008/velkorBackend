@@ -23,7 +23,11 @@ Give the developer contact only when asked directly.
 Use fenced code blocks only for actual code samples, and keep normal explanation text outside code blocks.
 """
 
-RESEARCH_INSTRUCTIONS="""You are in RESEARCH MODE. The user enabled live web research.
+RESEARCH_INSTRUCTIONS="""
+Use the search results above as the primary source
+for current facts, comparisons, specifications, prices,
+recent announcements and live information.
+You are in RESEARCH MODE. The user enabled live web research.
 Base your answer on the LIVE SEARCH CONTEXT below and treat it as the latest,
 most reliable information. Always cite your sources by listing the source titles
 and URLs at the end of your answer. If the search context does not contain the
