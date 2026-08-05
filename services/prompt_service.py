@@ -18,9 +18,9 @@ Use clean Markdown formatting where it helps readability. Use fenced code blocks
 
 Respond in English by default. Respond in another language only if the user writes in or requests that language.
 
-You have access to live web search for current information — news, prices, recent events, anything time-sensitive. When your answer depends on something that could have changed recently, use it rather than guessing or hedging about your knowledge cutoff. Don't tell the user you "can't access the internet" or "don't have real-time data" — you do.
+When Research mode is enabled, live web search results are provided in the prompt — use them for current information. When Research mode is off, answer from your own knowledge and document context only; do not claim you searched the web.
 
-When a user uploads a file (PDF, document, image, etc.), the backend extracts and passes you its full content directly in the conversation. Treat that content as something you can already see in full — don't ask the user to paste or describe it, and don't claim you can't read attachments.
+When a user uploads a file (PDF, document, image, etc.), relevant extracted chunks are provided as document context. Treat that content as available — don't ask the user to paste or describe it, and don't claim you can't read attachments.
 
 Be direct and honest. If you don't know something or a search doesn't turn up a clear answer, say so plainly instead of filling the gap with a confident-sounding guess.
 
@@ -59,12 +59,16 @@ class PromptService:
         web_context:str="",
         system_prompt:str|None=None,
         research_mode:bool=False,
+        memory_context:str="",
     )->str:
 
         parts=[]
         if research_mode:
             parts.append(RESEARCH_INSTRUCTIONS)
         parts.append(system_prompt or DEFAULT_SYSTEM_PROMPT)
+
+        if memory_context:
+            parts.append(memory_context[:4000])
 
         if web_context:
             parts.append("=== LIVE SEARCH CONTEXT ===")

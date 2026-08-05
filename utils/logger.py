@@ -1,6 +1,6 @@
 """
 utils/logger.py
-Central logging utility for Velkor AI Backend V2.
+Central logging utility for Velkor AI Backend.
 """
 
 import logging
@@ -51,6 +51,26 @@ def log_provider(provider: str, model: str, response_time: float):
     )
 
 
+def log_latency(response_time: float, kind: str = "chat"):
+    """Log chat latency against the 2–3s target. Image gen is excluded."""
+    if kind != "chat":
+        return
+    logger = get_logger("latency")
+    target = Config.CHAT_LATENCY_TARGET_S
+    if response_time > target:
+        logger.warning(
+            "Chat latency %.2fs exceeded %.1fs target",
+            response_time,
+            target,
+        )
+    else:
+        logger.info(
+            "Chat latency %.2fs (target %.1fs)",
+            response_time,
+            target,
+        )
+
+
 def log_upload(filename: str, size: int):
     logger = get_logger("uploads")
     logger.info(
@@ -67,6 +87,11 @@ def log_rag(source: str, chunks: int):
         source,
         chunks,
     )
+
+
+def log_search(query: str, results: int):
+    logger = get_logger("search")
+    logger.info("Query=%r Results=%d", query[:120], results)
 
 
 def log_error(location: str, exc: Exception):

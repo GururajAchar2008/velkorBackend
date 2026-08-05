@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod
-from typing import List, Dict, Optional
+from typing import List, Dict, Optional, Iterator, Callable
 
 from .response import AIResponse
 
@@ -34,6 +34,28 @@ class AIProvider(ABC):
         Must always return AIResponse.
         """
         pass
+
+    def generate_stream(
+        self,
+        messages: List[Dict],
+        timeout: int = 60,
+        system_prompt: Optional[str] = None,
+        on_chunk: Optional[Callable[[str], None]] = None,
+        should_stop: Optional[Callable[[], bool]] = None,
+    ) -> AIResponse:
+        """
+        Stream a chat completion. Default falls back to non-streaming
+        and emits the full reply as a single chunk.
+        """
+        response = self.generate(
+            messages=messages,
+            timeout=timeout,
+            system_prompt=system_prompt,
+        )
+        if response.success and response.reply and on_chunk:
+            if not (should_stop and should_stop()):
+                on_chunk(response.reply)
+        return response
 
     @abstractmethod
     def health_check(self) -> bool:

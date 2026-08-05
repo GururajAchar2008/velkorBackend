@@ -24,20 +24,20 @@ XLSX = {".xlsx", ".xlsm", ".xls"}
 PPTX = {".pptx", ".ppt"}
 IMAGE = {
     ".png", ".jpg", ".jpeg",
-    ".webp", ".bmp", ".gif", ".tiff",
+    ".webp", ".bmp", ".gif", ".tiff", ".svg",
     ".heic", ".heif",
 }
 ARCHIVE = {".zip", ".tar", ".gz", ".tgz"}
 
 CODE = {
-    ".py",".js",".ts",".jsx",".tsx",
-    ".java",".c",".cpp",".cc",".h",".hpp",".cs",
-    ".go",".rs",".php",".rb",".swift",
-    ".kt",".scala",".sql",".json",".xml",
-    ".yaml",".yml",".html",".htm",".css",".md",
-    ".txt",".sh",".bat",".csv",".tsv",
-    ".log",".ini",".toml",".cfg",".conf",
-    ".env",".tex",".rst",".rtf",".vtt",".srt",
+    ".py", ".js", ".ts", ".jsx", ".tsx",
+    ".java", ".c", ".cpp", ".cc", ".h", ".hpp", ".cs",
+    ".go", ".rs", ".php", ".rb", ".swift",
+    ".kt", ".scala", ".sql", ".json", ".xml",
+    ".yaml", ".yml", ".html", ".htm", ".css", ".md",
+    ".txt", ".sh", ".bat", ".csv", ".tsv",
+    ".log", ".ini", ".toml", ".cfg", ".conf",
+    ".env", ".tex", ".rst", ".rtf", ".vtt", ".srt",
 }
 
 TEXT_EXTENSIONS = CODE
@@ -48,11 +48,7 @@ def _ext(filepath):
 
 
 def extract_file_path(filepath):
-    """
-    Extract content from a file on disk (path-based API).
-
-    Same standardized result as extract_file().
-    """
+    """Extract content from a file on disk (path-based API)."""
     filename = os.path.basename(filepath)
     ext = _ext(filename)
 
@@ -61,6 +57,11 @@ def extract_file_path(filepath):
 
     stream = io.BytesIO(data)
     return dispatch(stream, filename, ext)
+
+
+def extract_text(filepath):
+    """Alias used by upload routes."""
+    return extract_file_path(filepath)
 
 
 def dispatch(stream, filename: str, ext: str):
@@ -90,9 +91,6 @@ def dispatch(stream, filename: str, ext: str):
         result = extract_code(stream, filename)
 
     if result is not None:
-        # Legacy binary formats (.doc, .xls, .ppt) often fail the modern
-        # parser. Fall back to raw UTF-8 text so the content still reaches
-        # the model instead of being dropped entirely.
         if not result.get("success") and ext in {".doc", ".xls", ".ppt"}:
             stream.seek(0)
             fallback = extract_code(stream, filename)
@@ -109,16 +107,9 @@ def dispatch(stream, filename: str, ext: str):
 
 
 def extract_file(file_storage):
-    """
-    Flask FileStorage -> standardized extraction result.
-    """
-
+    """Flask FileStorage -> standardized extraction result."""
     filename = file_storage.filename or "unknown"
-
     ext = _ext(filename)
-
     stream = file_storage.stream
-
     stream.seek(0)
-
     return dispatch(stream, filename, ext)

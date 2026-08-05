@@ -3,36 +3,33 @@ providers/router.py
 
 Smart provider router for Velkor AI.
 
-Routing order (cost-first):
+Routing order:
     1. NVIDIA NIM    (Primary / Free)     - skipped while rate-limited
     2. OpenRouter    (Fallback / Low-cost)
     3. OpenAI        (Premium / Last-resort) - only when OPENAI_API_KEY set
 
-NVIDIA's free tier is rate-limited (~40 RPM). The router tracks a sliding
-60-second window plus a cooldown after a 429, and automatically sends
-overflow traffic to OpenRouter so users never wait behind a rate limit.
+Falls back on ANY primary-provider error (rate limit, timeout, server
+error, malformed response). Switching is invisible to the user.
 """
 
 import time
 from collections import deque
+from typing import Optional, Callable
 
 from .nvidia import NvidiaProvider
 from .openrouter import OpenRouterProvider
 from .openai import OpenAIProvider
 from .response import AIResponse
 from config import Config
+from utils.logger import get_logger, log_provider, log_latency
 
+logger = get_logger(__name__)
 
 RETRY_STATUS = {408, 429, 500, 502, 503, 504}
 
 
 class _RateGuard:
-    """
-    Sliding-window rate limiter per provider.
-
-    Tracks how many requests were sent in the last 60 seconds and adds a
-    temporary cooldown whenever the provider reports a 429 (rate limit).
-    """
+    """Sliding-window rate limiter per provider."""
 
     WINDOW_SECONDS = 60
 
@@ -63,11 +60,7 @@ class _RateGuard:
 
 
 class AIRouter:
-    """
-    Primary: NVIDIA NIM
-    Fallback: OpenRouter
-    Premium: OpenAI (optional)
-    """
+    """Primary: NVIDIA NIM. Fallback: OpenRouter. Premium: OpenAI (optional)."""
 
     def __init__(self):
         self.primary = NvidiaProvider()
@@ -101,6 +94,28 @@ class AIRouter:
             timeout=timeout,
         )
 
+    def _attempt_stream(
+        self,
+        provider,
+        messages,
+        system_prompt,
+        timeout,
+        on_chunk,
+        should_stop,
+    ):
+        if provider is self.primary:
+            if not self.nvidia_guard.available():
+                return None
+            self.nvidia_guard.note_request()
+
+        return provider.generate_stream(
+            messages=messages,
+            system_prompt=system_prompt,
+            timeout=timeout,
+            on_chunk=on_chunk,
+            should_stop=should_stop,
+        )
+
     def generate(self, messages, system_prompt=None, timeout=60) -> AIResponse:
         errors = []
         last_status = 500
@@ -117,6 +132,8 @@ class AIRouter:
             if response.success:
                 if provider is not self.primary:
                     response.fallback_used = True
+                log_provider(response.provider, response.model, response.response_time)
+                log_latency(response.response_time, kind="chat")
                 return response
 
             errors.append(
@@ -126,8 +143,72 @@ class AIRouter:
 
             if provider is self.primary and response.status_code == 429:
                 self.nvidia_guard.note_rate_limited()
-                # Stop hitting NVIDIA for the cooldown window; keep descending.
                 continue
+
+            # Any primary error → continue to fallback
+            logger.warning(
+                "Provider %s failed (%s); trying next",
+                provider.provider_name,
+                response.error or response.status_code,
+            )
+
+        return AIResponse(
+            success=False,
+            reply="",
+            provider="router",
+            model="none",
+            status_code=last_status,
+            error=" | ".join(errors),
+        )
+
+    def generate_stream(
+        self,
+        messages,
+        system_prompt=None,
+        timeout=60,
+        on_chunk: Optional[Callable[[str], None]] = None,
+        should_stop: Optional[Callable[[], bool]] = None,
+    ) -> AIResponse:
+        errors = []
+        last_status = 500
+
+        for provider in self._providers_in_order():
+            response = self._attempt_stream(
+                provider,
+                messages,
+                system_prompt,
+                timeout,
+                on_chunk,
+                should_stop,
+            )
+
+            if response is None:
+                errors.append(
+                    f"{provider.provider_name}: skipped (rate limit reached)"
+                )
+                continue
+
+            if response.success:
+                if provider is not self.primary:
+                    response.fallback_used = True
+                log_provider(response.provider, response.model, response.response_time)
+                log_latency(response.response_time, kind="chat")
+                return response
+
+            errors.append(
+                f"{provider.provider_name}: {response.error or response.status_code}"
+            )
+            last_status = response.status_code
+
+            if provider is self.primary and response.status_code == 429:
+                self.nvidia_guard.note_rate_limited()
+                continue
+
+            logger.warning(
+                "Stream provider %s failed (%s); trying next",
+                provider.provider_name,
+                response.error or response.status_code,
+            )
 
         return AIResponse(
             success=False,

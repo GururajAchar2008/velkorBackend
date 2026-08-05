@@ -1,6 +1,6 @@
 """
 config.py
-Central configuration for Velkor AI Backend V2.
+Central configuration for Velkor AI Backend.
 """
 
 import os
@@ -21,13 +21,13 @@ class Config:
     OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY", "")
     OPENROUTER_MODEL = os.getenv(
         "OPENROUTER_MODEL",
-        "deepseek/deepseek-chat-v3-0324"
+        "deepseek/deepseek-chat-v3-0324",
     )
 
     NVIDIA_API_KEY = os.getenv("NVIDIA_API_KEY", "")
     NVIDIA_MODEL = os.getenv(
         "NVIDIA_MODEL",
-        "nvidia/llama-3.3-nemotron-super-49b-v1"
+        "nvidia/nemotron-3-ultra-550b-a55b",
     )
     # Free-tier NVIDIA NIM is capped (~40 RPM). Router auto-falls back to
     # OpenRouter when the window is full or after a 429 cooldown.
@@ -42,8 +42,10 @@ class Config:
 
     # ---------- Upload ----------
     MAX_CONTENT_LENGTH = 100 * 1024 * 1024
+    MAX_UPLOAD_BYTES = 100 * 1024 * 1024
     UPLOAD_FOLDER = "storage/uploads"
     TEMP_FOLDER = "storage/temp"
+    MEMORY_FOLDER = "storage/memory"
 
     # ---------- Image generation / editing (NVIDIA NIM) ----------
     IMAGE_GEN_MODEL = os.getenv("IMAGE_GEN_MODEL", "flux.1-schnell")
@@ -62,6 +64,7 @@ class Config:
     MAX_RETRIES = 2
     TEMPERATURE = 0.7
     MAX_TOKENS = 4096
+    CHAT_LATENCY_TARGET_S = 3.0
 
     # ---------- Logging ----------
     LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO")
