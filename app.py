@@ -21,9 +21,9 @@ from utils.logger import get_logger
 
 logger = get_logger(__name__)
 
+# NOTE: Origins must ONLY contain protocol + domain (NO PATHS like /Velkor)
 ALLOWED_ORIGINS = [
     "https://gururajachar2008.github.io",
-    "https://gururajachar2008.github.io/Velkor",
     "http://localhost:5173",
     "http://127.0.0.1:5173",
     "http://localhost:4173",
@@ -31,9 +31,9 @@ ALLOWED_ORIGINS = [
 ]
 
 # Threading mode is portable across Python versions and works with
-# gunicorn gthread workers. Eventlet is avoided due to 3.12+ breakage.
+# gunicorn gthread workers.
 socketio = SocketIO(
-    cors_allowed_origins=ALLOWED_ORIGINS,
+    cors_allowed_origins="*",  # Allows GitHub Pages domain to connect reliably
     async_mode="threading",
     logger=False,
     engineio_logger=False,
@@ -47,11 +47,12 @@ def create_app():
     app.config.from_object(Config)
     app.config["MAX_CONTENT_LENGTH"] = Config.MAX_CONTENT_LENGTH
 
+    # Enable CORS for all allowed origins and allow standard streaming/SSE headers
     CORS(
         app,
-        origins=ALLOWED_ORIGINS,
+        origins="*",
         methods=["GET", "POST", "DELETE", "OPTIONS"],
-        allow_headers=["Content-Type", "Authorization"],
+        allow_headers=["Content-Type", "Authorization", "Accept", "X-Requested-With"],
         supports_credentials=False,
     )
 
