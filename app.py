@@ -18,7 +18,9 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s | %(levelname)s | %(
 logger = logging.getLogger("velkor-app")
 
 app = Flask(__name__)
-CORS(app)
+
+# Explicitly configure CORS to support your frontend origin and preflight options
+CORS(app, resources={r"/api/*": {"origins": ["https://gururajachar2008.github.io", "http://localhost:5173", "http://localhost:3000"]}}, supports_credentials=True)
 
 # --- CONFIGURATION ---
 NVIDIA_API_KEY = os.getenv("NVIDIA_API_KEY", "")
@@ -172,9 +174,26 @@ class AIProviderRouter:
 
 # --- 4. FLASK ROUTES ---
 
-@app.route("/api/chat", methods=["POST"])
+@app.route("/api/health", methods=["GET"])
+def health_check():
+    """Health check endpoint to verify backend status."""
+    return jsonify({"status": "ok", "service": "Velkor AI Backend"}), 200
+
+
+@app.route("/api/chat/stream", methods=["POST", "OPTIONS"])
+def chat_stream_route():
+    """Chat stream endpoint mapped to match frontend requests."""
+    if request.method == "OPTIONS":
+        return jsonify({}), 200
+    return chat_route()
+
+
+@app.route("/api/chat", methods=["POST", "OPTIONS"])
 def chat_route():
     """Chat endpoint supporting streaming, research mode, and file context attachments."""
+    if request.method == "OPTIONS":
+        return jsonify({}), 200
+        
     try:
         data = request.form if request.form else request.get_json(silent=True) or {}
         
@@ -216,9 +235,12 @@ def chat_route():
         return jsonify({"success": False, "error": str(e)}), 500
 
 
-@app.route("/api/image", methods=["POST"])
+@app.route("/api/image", methods=["POST", "OPTIONS"])
 def image_route():
     """Image generation route using Pollinations/NVIDIA endpoints."""
+    if request.method == "OPTIONS":
+        return jsonify({}), 200
+        
     data = request.get_json() or {}
     prompt = data.get("prompt", "").strip()
     if not prompt:
