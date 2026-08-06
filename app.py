@@ -13,6 +13,7 @@ from flask import Flask, request, jsonify, Response, stream_with_context
 from flask_cors import CORS
 import requests
 from datetime import datetime
+import traceback
 
 try:
     from dotenv import load_dotenv
@@ -299,16 +300,16 @@ Be direct and honest. If you don't know something or a search doesn't turn up a 
 If asked how to contact your developer, respond with: "You can reach out to Gururaj Achar at https://gururajachar2008.github.io/Portfolio2.0/". Only share this when asked directly — never volunteer it."""
 
         if web_context:
-            system_prompt += f"\n\nLive search results, retrieved just now on {current_date}:\n{web_context}\n\n"
-        "Treat these as your primary source for anything time-sensitive — current facts, prices, "
-        "specifications, comparisons, recent announcements, office-holders, and live events. Prioritize "
-        "them over your own prior knowledge whenever the two could conflict, since search results reflect "
-        "the current state of things and your training data may not. Take the results at face value: if a "
-        "result's date is at or before today, it is a real, already-happened event, not a prediction or "
-        "speculation — do not editorialize about a date 'seeming premature' or 'looking forward-dated.' "
-        "If the results don't fully answer the question, say what's missing rather than filling the gap "
-        "from memory. If results genuinely conflict with each other (not just with what you expected), "
-        "note the discrepancy instead of picking one silently.\n{web_context}"
+            system_prompt += f"""\n\nLive search results, retrieved just now on {current_date}:\n{web_context}\n\n
+        "Treat these as your primary source for anything time-sensitive — current facts, prices, 
+        "specifications, comparisons, recent announcements, office-holders, and live events. Prioritize 
+        "them over your own prior knowledge whenever the two could conflict, since search results reflect 
+        "the current state of things and your training data may not. Take the results at face value: if a 
+        "result's date is at or before today, it is a real, already-happened event, not a prediction or 
+        "speculation — do not editorialize about a date 'seeming premature' or 'looking forward-dated.' 
+        "If the results don't fully answer the question, say what's missing rather than filling the gap 
+        "from memory. If results genuinely conflict with each other (not just with what you expected), 
+        "note the discrepancy instead of picking one silently.\n{web_context}"""
         if file_context:
             system_prompt += f"\n\nAttached Document Content:\n{file_context}"
 
@@ -319,8 +320,13 @@ If asked how to contact your developer, respond with: "You can reach out to Guru
             content_type="text/event-stream"
         )
     except Exception as e:
-        logger.error("Chat route error: %s", e)
-        return jsonify({"success": False, "error": str(e)}), 500
+    traceback.print_exc()
+    logger.exception("Image generation failed")
+
+    return jsonify({
+        "success": False,
+        "error": str(e)
+    }), 500
 
 @app.route("/api/image", methods=["POST", "OPTIONS"])
 def image_route():
