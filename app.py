@@ -218,13 +218,14 @@ class AIProviderRouter:
                 "X-Title": "Velkor AI",
             }
             payload_or = {
-                "model": "nvidia/nemotron-3-ultra-550b-a55b:free",
+                "model": "deepseek/deepseek-r1-0528:free",
                 "messages": messages,
                 "temperature": 0.5,
                 "stream": True,
             }
             try:
                 response = requests.post(or_url, headers=headers_or, json=payload_or, stream=True, timeout=15)
+                response.raise_for_status()
                 for line in response.iter_lines():
                     if line:
                         decoded = line.decode("utf-8")
@@ -300,16 +301,20 @@ Be direct and honest. If you don't know something or a search doesn't turn up a 
 If asked how to contact your developer, respond with: "You can reach out to Gururaj Achar at https://gururajachar2008.github.io/Portfolio2.0/". Only share this when asked directly — never volunteer it."""
 
         if web_context:
-            system_prompt += f"""\n\nLive search results, retrieved just now on {current_date}:\n{web_context}\n\n
-        "Treat these as your primary source for anything time-sensitive — current facts, prices, 
-        "specifications, comparisons, recent announcements, office-holders, and live events. Prioritize 
-        "them over your own prior knowledge whenever the two could conflict, since search results reflect 
-        "the current state of things and your training data may not. Take the results at face value: if a 
-        "result's date is at or before today, it is a real, already-happened event, not a prediction or 
-        "speculation — do not editorialize about a date 'seeming premature' or 'looking forward-dated.' 
-        "If the results don't fully answer the question, say what's missing rather than filling the gap 
-        "from memory. If results genuinely conflict with each other (not just with what you expected), 
-        "note the discrepancy instead of picking one silently.\n{web_context}"""
+            system_prompt += f"""
+            Live search results, retrieved just now on {current_date}:
+            {web_context}
+            Treat these as your primary source for anything time-sensitive — current facts, prices, 
+            specifications, comparisons, recent announcements, office-holders, and live events. Prioritize 
+            them over your own prior knowledge whenever the two could conflict, since search results reflect 
+            the current state of things and your training data may not. Take the results at face value: if a 
+            result's date is at or before today, it is a real, already-happened event, not a prediction or 
+            speculation — do not editorialize about a date 'seeming premature' or 'looking forward-dated.' 
+            If the results don't fully answer the question, say what's missing rather than filling the gap 
+            from memory. If results genuinely conflict with each other (not just with what you expected), 
+            note the discrepancy instead of picking one silently.
+            {web_context}
+            """
         if file_context:
             system_prompt += f"\n\nAttached Document Content:\n{file_context}"
 
@@ -320,13 +325,12 @@ If asked how to contact your developer, respond with: "You can reach out to Guru
             content_type="text/event-stream"
         )
     except Exception as e:
-    traceback.print_exc()
-    logger.exception("Image generation failed")
-
-    return jsonify({
-        "success": False,
-        "error": str(e)
-    }), 500
+        traceback.print_exc()
+        logger.exception("Chat route failed")
+        return jsonify({
+            "success": False,
+            "error": str(e)
+        }), 500
 
 @app.route("/api/image", methods=["POST", "OPTIONS"])
 def image_route():
@@ -348,7 +352,12 @@ def image_route():
             return jsonify({"success": True, "image_b64": b64_data, "mime": "image/png"})
         return jsonify({"success": False, "error": "Image generation provider failed."}), 502
     except Exception as e:
-        return jsonify({"success": False, "error": str(e)}), 500
+        traceback.print_exc()
+        logger.exception("Image generation failed")
+        return jsonify({
+            "success": False,
+            "error": str(e)
+        }), 500
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5000, debug=True)
