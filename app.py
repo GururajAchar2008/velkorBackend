@@ -217,7 +217,7 @@ class AIProviderRouter:
                 "X-Title": "Velkor AI",
             }
             payload_or = {
-                "model": "openrouter/free",
+                "model": "nvidia/nemotron-3-ultra-550b-a55b:free",
                 "messages": messages,
                 "temperature": 0.5,
                 "stream": True,
