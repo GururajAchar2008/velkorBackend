@@ -1,15 +1,16 @@
 """
 app.py — Velkor AI Complete Backend (Single-File Architecture)
 Includes: Chat (with streaming, NVIDIA primary -> OpenRouter fallback),
-Research search (Level 1: search + page reading), universal file upload/parsing,
-and image generation.
+Research search (SearXNG JSON API integration with parallel page reading),
+universal file upload/parsing, and image generation.
 """
 
 import os
 import time
 import base64
 import logging
-from typing import Dict, Any, Generator
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from typing import Dict, Any, Generator, List
 from flask import Flask, request, jsonify, Response, stream_with_context
 from flask_cors import CORS
 import requests
@@ -34,6 +35,7 @@ CORS(app, resources={r"/api/*": {"origins": ["https://gururajachar2008.github.io
 # --- CONFIGURATION ---
 NVIDIA_API_KEY = os.getenv("NVIDIA_API_KEY", "")
 OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY", "")
+SEARXNG_URL = os.getenv("SEARXNG_URL", "https://searxng.yourdomain.com").rstrip("/")
 UPLOAD_FOLDER = "uploads"
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 
@@ -41,36 +43,39 @@ if not NVIDIA_API_KEY:
     logger.warning("NVIDIA_API_KEY is not set — NVIDIA NIM calls will be skipped.")
 if not OPENROUTER_API_KEY:
     logger.warning("OPENROUTER_API_KEY is not set — the OpenRouter fallback will fail.")
+if not os.getenv("SEARXNG_URL"):
+    logger.warning("SEARXNG_URL is not set — using default placeholder URL.")
 
-# --- 1. SEARCH + WEB PAGE READING SERVICE ---
+# --- 1. SEARCH + PARALLEL WEB PAGE READING SERVICE (SearXNG + Trafilatura) ---
 
 class SearchService:
 
     @staticmethod
     def search(query: str, num: int = 8) -> Dict[str, Any]:
         """
-        Searches DuckDuckGo and returns the top search results.
-        We intentionally retrieve more results than before so that
-        the page-reading stage has better sources to choose from.
+        Queries the self-hosted SearXNG instance JSON API to fetch search results.
         """
-        url = "https://html.duckduckgo.com/html/"
+        url = f"{SEARXNG_URL}/search"
 
         try:
-            response = requests.post(
+            response = requests.get(
                 url,
+                params={
+                    "q": query,
+                    "format": "json"
+                },
                 headers={
                     "User-Agent": (
                         "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
                         "AppleWebKit/537.36 Chrome/151.0.0.0 Safari/537.36"
                     )
                 },
-                data={"q": query},
                 timeout=10,
             )
 
             if response.status_code != 200:
                 logger.warning(
-                    "DuckDuckGo returned HTTP %s",
+                    "SearXNG returned HTTP %s",
                     response.status_code
                 )
                 return {
@@ -78,45 +83,15 @@ class SearchService:
                     "results": []
                 }
 
-            import re
-            import html
-
-            blocks = re.findall(
-                r'<a[^>]+class="result__a"[^>]+href="([^"]+)"[^>]*>(.*?)</a>',
-                response.text,
-                re.DOTALL
-            )
-
-            snippets = re.findall(
-                r'<a[^>]+class="result__snippet"[^>]*>(.*?)</a>',
-                response.text,
-                re.DOTALL
-            )
+            data = response.json()
+            raw_results = data.get("results", [])
 
             results = []
-
-            for i, (href, title) in enumerate(blocks[:num]):
-
-                clean_title = re.sub(
-                    r"<[^>]+>",
-                    "",
-                    title
-                ).strip()
-
-                snippet = (
-                    re.sub(
-                        r"<[^>]+>",
-                        "",
-                        snippets[i]
-                    )
-                    if i < len(snippets)
-                    else ""
-                )
-
+            for item in raw_results[:num]:
                 results.append({
-                    "title": html.unescape(clean_title),
-                    "snippet": html.unescape(snippet).strip(),
-                    "url": href
+                    "title": item.get("title", "Untitled"),
+                    "snippet": item.get("content", "").strip(),
+                    "url": item.get("url", "")
                 })
 
             logger.info(
@@ -141,18 +116,8 @@ class SearchService:
     @staticmethod
     def fetch_page(url: str, max_chars: int = 10000) -> Dict[str, Any]:
         """
-        Downloads a web page and extracts the useful article/page text.
-
-        Trafilatura removes most:
-        - navigation
-        - advertisements
-        - menus
-        - cookie banners
-        - unnecessary HTML
-
-        and attempts to keep the actual readable page content.
+        Downloads a web page and extracts the useful article/page text using Trafilatura.
         """
-
         try:
             import trafilatura
 
@@ -167,7 +132,7 @@ class SearchService:
             response = requests.get(
                 url,
                 headers=headers,
-                timeout=12,
+                timeout=10,
                 allow_redirects=True
             )
 
@@ -177,14 +142,12 @@ class SearchService:
                     response.status_code,
                     url
                 )
-
                 return {
                     "success": False,
                     "url": url,
                     "text": ""
                 }
 
-            # Don't process enormous responses.
             raw_html = response.text[:2_000_000]
 
             extracted = trafilatura.extract(
@@ -204,16 +167,11 @@ class SearchService:
 
             extracted = extracted.strip()
 
-            # Prevent one page from consuming the entire model context.
             if len(extracted) > max_chars:
                 extracted = extracted[:max_chars]
-
-                # Avoid ending in the middle of a word where possible.
                 last_space = extracted.rfind(" ")
-
                 if last_space > max_chars - 500:
                     extracted = extracted[:last_space]
-
                 extracted += "\n[Page content truncated]"
 
             logger.info(
@@ -234,7 +192,6 @@ class SearchService:
                 url,
                 e
             )
-
             return {
                 "success": False,
                 "url": url,
@@ -244,15 +201,14 @@ class SearchService:
     @staticmethod
     def research(query: str, search_count: int = 8, pages_to_read: int = 5) -> Dict[str, Any]:
         """
-        Complete Level-1 research pipeline:
+        Complete Level-1 research pipeline with parallel page fetching to prevent Render worker timeouts:
 
-        1. Search the web.
+        1. Search the web via SearXNG.
         2. Select the best search results.
-        3. Visit those pages.
+        3. Visit those pages concurrently using a ThreadPoolExecutor.
         4. Extract their actual readable content.
-        5. Return the content to the LLM.
+        5. Return the structured content to the LLM.
         """
-
         search_data = SearchService.search(
             query,
             num=search_count
@@ -266,17 +222,12 @@ class SearchService:
             }
 
         search_results = search_data.get("results", [])
+        target_results = search_results[:pages_to_read]
 
-        sources = []
-        context_parts = []
+        sources_map = {}
+        context_parts = [None] * len(target_results)
 
-        # Only read the first few results.
-        # The snippets are still kept as a fallback.
-        for index, result in enumerate(
-            search_results[:pages_to_read],
-            start=1
-        ):
-
+        def process_result(index: int, result: Dict[str, Any]):
             title = result.get("title", "Untitled")
             snippet = result.get("snippet", "")
             url = result.get("url", "")
@@ -288,9 +239,7 @@ class SearchService:
 
             if page.get("success") and page.get("text"):
                 page_text = page["text"]
-
-                context_parts.append(
-                    f"""
+                part = f"""
 ================ SOURCE {index} ================
 
 TITLE:
@@ -304,20 +253,14 @@ CONTENT:
 
 ================ END SOURCE {index} ================
 """
-                )
-
-                sources.append({
+                source_meta = {
                     "id": index,
                     "title": title,
                     "url": url,
                     "type": "page"
-                })
-
+                }
             else:
-                # If the page cannot be opened, don't completely
-                # throw away the search result.
-                context_parts.append(
-                    f"""
+                part = f"""
 ================ SOURCE {index} ================
 
 TITLE:
@@ -331,26 +274,43 @@ SEARCH SNIPPET:
 
 ================ END SOURCE {index} ================
 """
-                )
-
-                sources.append({
+                source_meta = {
                     "id": index,
                     "title": title,
                     "url": url,
                     "type": "search_snippet"
-                })
+                }
+            return index - 1, part, source_meta
 
-        context = "\n".join(context_parts)
+        # Fetch pages concurrently to drastically reduce latency and avoid worker timeout
+        with ThreadPoolExecutor(max_workers=pages_to_read) as executor:
+            futures = [
+                executor.submit(process_result, idx, res)
+                for idx, res in enumerate(target_results, start=1)
+            ]
+            for future in as_completed(futures):
+                try:
+                    idx_pos, part, source_meta = future.result()
+                    context_parts[idx_pos] = part
+                    sources_map[idx_pos] = source_meta
+                except Exception as e:
+                    logger.error("Error processing page in parallel pool: %s", e)
+
+        # Reconstruct ordered lists based on original search ranking
+        valid_context_parts = [p for p in context_parts if p is not None]
+        ordered_sources = [sources_map[i] for i in sorted(sources_map.keys())]
+
+        context = "\n".join(valid_context_parts)
 
         logger.info(
             "Research completed: query=%r pages=%d",
             query,
-            len(sources)
+            len(ordered_sources)
         )
 
         return {
             "success": True,
-            "sources": sources,
+            "sources": ordered_sources,
             "context": context
         }
 
@@ -366,12 +326,9 @@ class DocumentService:
         extracted_text = ""
         ext = filename.split(".")[-1].lower()
         try:
-            # Plain text, source code, and data formats
             if ext in ["txt", "py", "js", "ts", "jsx", "tsx", "html", "css", "json", "md", "csv", "xml", "yaml", "yml", "sql", "sh"]:
                 with open(path, "r", encoding="utf-8", errors="ignore") as f:
                     extracted_text = f.read()
-            
-            # PDF documents
             elif ext == "pdf":
                 try:
                     import pypdf
@@ -379,8 +336,6 @@ class DocumentService:
                     extracted_text = "\n".join([page.extract_text() or "" for page in reader.pages])
                 except Exception:
                     extracted_text = "[PDF parsing library unavailable, binary stored]"
-            
-            # Word documents (.docx)
             elif ext == "docx":
                 try:
                     from docx import Document
@@ -397,8 +352,6 @@ class DocumentService:
                 except Exception as e:
                     logger.error("DOCX parse error: %s", e)
                     extracted_text = "[Error parsing Word document (.docx)]"
-
-            # Excel spreadsheets (.xlsx)
             elif ext in ["xlsx", "xls"]:
                 try:
                     import pandas as pd
@@ -410,8 +363,6 @@ class DocumentService:
                 except Exception as e:
                     logger.error("Excel parse error: %s", e)
                     extracted_text = "[Error parsing Spreadsheet]"
-
-            # PowerPoint presentations (.pptx)
             elif ext == "pptx":
                 try:
                     from pptx import Presentation
@@ -430,7 +381,6 @@ class DocumentService:
                 except Exception as e:
                     logger.error("PPTX parse error: %s", e)
                     extracted_text = "[Error parsing Presentation (.pptx)]"
-
             else:
                 extracted_text = f"[Uploaded file: {filename} of type {ext}]"
         except Exception as e:
@@ -457,7 +407,6 @@ class AIProviderRouter:
             "stream": True,
         }
 
-        nvidia_error = None
         success = False
         if NVIDIA_API_KEY:
             try:
@@ -482,10 +431,8 @@ class AIProviderRouter:
                                 except Exception:
                                     pass
                     return
-                else:
-                    nvidia_error = f"NVIDIA NIM returned HTTP {response.status_code}"
             except Exception as e:
-                nvidia_error = f"NVIDIA NIM failed: {e}"
+                logger.warning("NVIDIA NIM failed: %s", e)
 
         # Fallback: OpenRouter Free Tier
         if not success:
@@ -497,7 +444,7 @@ class AIProviderRouter:
             headers_or = {
                 "Authorization": f"Bearer {OPENROUTER_API_KEY}",
                 "Content-Type": "application/json",
-                "HTTP-Referer": "https://velkor.ai",
+                "HTTP-Referer": "https://gururajachar2008.github.io/Velkor",
                 "X-Title": "Velkor AI",
             }
             payload_or = {
