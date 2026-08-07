@@ -31,7 +31,7 @@ logger = logging.getLogger("velkor-app")
 app = Flask(__name__)
 
 # Explicitly configure CORS to support your frontend origin and preflight options
-CORS(app, resources={r"/api/*": {"origins": ["https://gururajachar2008.github.io/Velkor", "http://localhost:5173", "http://localhost:3000"]}}, supports_credentials=True)
+CORS(app, resources={r"/api/*": {"origins": ["https://gururajachar2008.github.io/Velkor/", "http://localhost:5173", "http://localhost:3000"]}}, supports_credentials=True)
 
 # --- CONFIGURATION ---
 NVIDIA_API_KEY = os.getenv("NVIDIA_API_KEY", "")
