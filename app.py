@@ -2,7 +2,8 @@
 app.py — Velkor AI Complete Backend (Single-File Architecture)
 Includes: Chat (with streaming, NVIDIA primary -> OpenRouter fallback),
 Research search (SearXNG JSON API integration with parallel page reading),
-universal file upload/parsing, and image generation.
+universal file upload/parsing, image generation, and a dedicated
+portfolio-assistant route for gururajachar2008.github.io.
 """
 
 import os
@@ -52,6 +53,12 @@ OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY", "")
 SEARXNG_URL = os.getenv("SEARXNG_URL", "https://searxng.yourdomain.com").rstrip("/")
 UPLOAD_FOLDER = "uploads"
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+
+# Hard cap on how much portfolio "context" text the frontend can push into
+# the system prompt. Keeps token usage predictable and blocks anyone from
+# using this open CORS route to smuggle in an oversized payload.
+MAX_CONTEXT_CHARS = 4000
+MAX_PORTFOLIO_MESSAGES = 20
 
 if not NVIDIA_API_KEY:
     logger.warning("NVIDIA_API_KEY is not set — NVIDIA NIM calls will be skipped.")
@@ -385,6 +392,63 @@ def chat_route():
     except Exception as e:
         logger.exception("Chat route failed")
         return jsonify({"success": False, "error": str(e)}), 500
+
+
+@app.route("/api/portfolio/chat", methods=["POST", "OPTIONS"])
+def portfolio_chat_route():
+    """
+    Dedicated route for the floating assistant widget on
+    gururajachar2008.github.io. Kept separate from /api/chat so the
+    portfolio's system prompt, context size limits, and future
+    changes (e.g. rate limiting) never affect the classroom app.
+    """
+    if request.method == "OPTIONS":
+        return jsonify({}), 200
+
+    try:
+        data = request.get_json(silent=True) or {}
+        messages = data.get("messages", [])
+        portfolio_context = str(data.get("context", ""))[:MAX_CONTEXT_CHARS]
+
+        if not isinstance(messages, list) or not messages:
+            return jsonify({"success": False, "error": "messages is required"}), 400
+
+        # Keep only the last N turns and only the fields we expect.
+        safe_messages = []
+        for m in messages[-MAX_PORTFOLIO_MESSAGES:]:
+            role = m.get("role")
+            content = m.get("content", "")
+            if role in ("user", "assistant") and isinstance(content, str):
+                safe_messages.append({"role": role, "content": content[:4000]})
+
+        if not safe_messages:
+            return jsonify({"success": False, "error": "no valid messages"}), 400
+
+        current_date = datetime.now().strftime("%A, %B %d, %Y")
+        system_prompt = (
+            "You are Velkor, the AI assistant embedded in Gururaj Achar's "
+            "personal portfolio site. Today's date is " + current_date + ". "
+            "Answer visitor questions about Gururaj's skills, projects, and "
+            "background using the PORTFOLIO CONTEXT below. Keep replies short "
+            "(2-4 sentences) and friendly. If asked for contact info, say they "
+            "can reach Gururaj through the contact section of the site. If a "
+            "question isn't covered by the context, say you're not sure and "
+            "suggest checking the Projects or Contact section."
+        )
+
+        if portfolio_context:
+            system_prompt += f"\n\nPORTFOLIO CONTEXT:\n{portfolio_context}"
+
+        final_messages = [{"role": "system", "content": system_prompt}] + safe_messages
+
+        return Response(
+            stream_with_context(AIProviderRouter.generate_stream(final_messages)),
+            content_type="text/event-stream"
+        )
+    except Exception as e:
+        logger.exception("Portfolio chat route failed")
+        return jsonify({"success": False, "error": str(e)}), 500
+
 
 @app.route("/api/image", methods=["POST", "OPTIONS"])
 def image_route():
