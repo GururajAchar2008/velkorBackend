@@ -353,7 +353,6 @@ def health_check():
 def chat_route():
     if request.method == "OPTIONS":
         return jsonify({}), 200
-
     try:
         data = request.form if request.form else request.get_json(silent=True) or {}
         messages_raw = data.get("messages", "[]")
@@ -361,9 +360,15 @@ def chat_route():
         research_mode = str(data.get("research_mode", "false")).lower() == "true"
 
         file_context = ""
-        if "file" in request.files:
-            file_obj = request.files["file"]
-            file_context = DocumentService.parse_file(file_obj)
+        if "files" in request.files:
+            uploaded_files = request.files.getlist("files")[:10]
+            parsed_parts = []
+            for f in uploaded_files:
+                if not f or not f.filename:
+                    continue
+                text = DocumentService.parse_file(f)
+                parsed_parts.append(f"--- FILE: {f.filename} ---\n{text}")
+            file_context = "\n\n".join(parsed_parts)
 
         web_context = ""
         research_sources = []
@@ -392,7 +397,6 @@ def chat_route():
     except Exception as e:
         logger.exception("Chat route failed")
         return jsonify({"success": False, "error": str(e)}), 500
-
 
 @app.route("/api/portfolio/chat", methods=["POST", "OPTIONS"])
 def portfolio_chat_route():
