@@ -376,7 +376,7 @@ def chat_route():
                     research_sources = research_data.get("sources", [])
 
         current_date = datetime.now().strftime("%A, %B %d, %Y")
-        system_prompt = f"You are Velkor AI, a helpful assistant created by Gururaj Achar. Today's date is {current_date}. if user asks for the developer contact hten only you can say that 'you can contact Gururaj Achar by clicking the link at the bottom of the side bar'"
+        system_prompt = f"You are Velkor AI, a helpful assistant created by Gururaj Achar. Today's date is {current_date}. if user asks for the developer contact hten only you can say that 'you can contact Gururaj Achar by clicking the link at the bottom of the side bar', and also dont over expalin anything just simple and small"
 
         if web_context:
             system_prompt += f"\n\nLIVE WEB RESEARCH:\n{web_context}"
