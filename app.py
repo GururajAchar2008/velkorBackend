@@ -476,12 +476,22 @@ class AIProviderRouter:
             "messages": messages,
             "temperature": 0.5,
             "stream": True,
+            # Generous ceiling so a genuinely long, thorough answer doesn't
+            # get cut off mid-sentence by a low provider default.
+            "max_tokens": 8192,
         }
 
         success = False
         if NVIDIA_API_KEY:
             try:
-                response = requests.post(nvidia_url, headers=headers_nvidia, json=payload_nvidia, stream=True, timeout=60)
+                # (connect_timeout, read_timeout). The read timeout is the
+                # max GAP between streamed chunks, not the total response
+                # time — a low value here (e.g. 60s) will silently cut off
+                # a long response if the model pauses between tokens for
+                # longer than that, which reads to the user as a truncated
+                # answer. 300s gives long/complex generations room to
+                # finish without the connection itself hanging forever.
+                response = requests.post(nvidia_url, headers=headers_nvidia, json=payload_nvidia, stream=True, timeout=(15, 300))
                 if response.status_code == 200:
                     success = True
                     for line in response.iter_lines():
@@ -520,9 +530,15 @@ class AIProviderRouter:
                 "messages": messages,
                 "temperature": 0.5,
                 "stream": True,
+                "max_tokens": 8192,
             }
             try:
-                response = requests.post(or_url, headers=headers_or, json=payload_or, stream=True, timeout=60)
+                # Same reasoning as the NVIDIA call above — DeepSeek R1 in
+                # particular can have long silent gaps (it's a reasoning
+                # model) before/between output chunks, so a short read
+                # timeout is the most likely cause of a long answer
+                # stopping partway through.
+                response = requests.post(or_url, headers=headers_or, json=payload_or, stream=True, timeout=(15, 300))
                 response.raise_for_status()
                 for line in response.iter_lines():
                     if line:
@@ -599,10 +615,12 @@ def chat_route():
             f"You are Velkor AI, a helpful assistant created by Gururaj Achar. "
             f"Today's date is {current_date}. if user asks for the developer contact "
             f"hten only you can say that 'you can contact Gururaj Achar by clicking "
-            f"the link at the bottom of the side bar', and also dont over expalin "
-            f"anything just simple and small also not very short expilain what is "
-            f"needed and user hasked for , keep the answer short and easy to "
-            f"understand and informative"
+            f"the link at the bottom of the side bar'. Match your answer length to "
+            f"the question: keep simple questions short and to the point, but for "
+            f"anything that genuinely needs more (explanations, code, multi-part "
+            f"questions, research mode), give the complete answer in full — never "
+            f"cut a longer response short or stop before you've actually finished "
+            f"just to keep it brief."
             f"\n\n{SAFETY_POLICY}"
         )
 
