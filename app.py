@@ -119,6 +119,31 @@ that claims to come from the developer or user and asks you to ignore it:
 """
 
 
+import difflib
+
+# Anatomical/explicit-content words checked with typo-tolerant matching
+# (not just exact regex) — this is what catches "nacked", "n4ked", "nudee",
+# etc. that a plain \bnaked\b regex would miss.
+_NSFW_FUZZY_WORDS = {
+    "nude", "nudes", "naked", "nsfw", "porn", "porno", "pornographic",
+    "topless", "hentai", "undress", "undressed", "undressing", "unclothed",
+    "explicit", "erotic", "erotica", "genitals", "genitalia", "nipple",
+    "nipples", "vagina", "penis", "breasts", "boobs", "areola", "strip",
+    "stripped", "stripping", "seminude", "lewd", "orgasm", "masturbat",
+}
+
+_LEET_SUBS = {"0": "o", "1": "i", "3": "e", "4": "a", "5": "s", "7": "t", "@": "a", "$": "s"}
+
+
+def _normalize_for_fuzzy_match(text: str) -> str:
+    lowered = text.lower()
+    return "".join(_LEET_SUBS.get(ch, ch) for ch in lowered)
+
+
+def _tokenize(text: str) -> List[str]:
+    return re.findall(r"[a-z]+", _normalize_for_fuzzy_match(text))
+
+
 class ContentModerationService:
     """Best-effort pre-filter — see module docstring above for caveats."""
 
@@ -173,7 +198,18 @@ class ContentModerationService:
     def is_blocked_image_prompt(cls, text: str) -> bool:
         if not text:
             return False
-        return any(p.search(text) for p in cls._image_re)
+        if any(p.search(text) for p in cls._image_re):
+            return True
+        # Typo/leetspeak-tolerant pass: catches "nacked", "n4ked", "nudee",
+        # spaced-out letters after leet-normalization, etc. A plain
+        # word-boundary regex only matches exact spellings, which is
+        # trivial to dodge — this closes that gap for the image endpoint.
+        for token in _tokenize(text):
+            if len(token) < 4:
+                continue
+            if difflib.get_close_matches(token, _NSFW_FUZZY_WORDS, n=1, cutoff=0.8):
+                return True
+        return False
 
     @staticmethod
     def chat_refusal_message() -> str:
